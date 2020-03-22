@@ -18,6 +18,9 @@ EXTRA_COMPONENTS = \
 	$(abspath ../components/esp-homekit-common-functions/ota)\
     $(abspath ../components/esp-homekit-common-functions/custom_characteristics)\
     $(abspath ../components/esp-homekit-common-functions/shared_functions)\
+    $(abspath ../components/esp-homekit-common-functions/rgbw_lights)\
+    $(abspath ../components/esp-homekit-common-functions/colour_conversion)\
+    extras/multipwm \
     $(abspath ../components/HLW8012_BL0937_ESP)
 
 
@@ -37,6 +40,8 @@ EXTRA_CFLAGS += -DUDPLOG_PRINTF_TO_UDP
 EXTRA_CFLAGS += -DUDPLOG_PRINTF_ALSO_SERIAL
 EXTRA_CFLAGS += -DconfigUSE_TRACE_FACILITY
 
+
+LIBS ?= m
 
 include $(SDK_PATH)/common.mk
 

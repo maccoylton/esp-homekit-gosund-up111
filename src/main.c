@@ -12,15 +12,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Homekit firmware gosund UP111 Power Monitoring SmartSocket
+ * Homekit firmware SWA9 SmartSocket
  */
 
-#define DEVICE_MANUFACTURER "gosund"
-#define DEVICE_NAME "smartplug"
+#define DEVICE_MANUFACTURER "Gosund"
+#define DEVICE_NAME "Smartplug"
 #define DEVICE_MODEL "UP111"
 #define DEVICE_SERIAL "12345678"
 #define FW_VERSION "1.0"
 #define SAVE_DELAY 5000
+#define POWER_MONITOR_POLL_PERIOD 10000
+
 
 #include <stdio.h>
 #include <espressif/esp_wifi.h>
@@ -44,6 +46,8 @@
 #include <HLW8012_ESP82.h>
 
 
+
+
 // add this section to make your device OTA capable
 // create the extra characteristic &ota_trigger, at the end of the primary service (before the NULL)
 // it can be used in Eve, which will show it, where Home does not
@@ -52,10 +56,9 @@
 #include <ota-api.h>
 
 void switch_on_callback(homekit_characteristic_t *_ch, homekit_value_t on, void *context);
-void volts_callback(homekit_characteristic_t *_ch, homekit_value_t on, void *context);
-void amps_callback(homekit_characteristic_t *_ch, homekit_value_t on, void *context);
-void watts_callback(homekit_characteristic_t *_ch, homekit_value_t on, void *context);
-
+void volts_callback(homekit_characteristic_t *_ch, homekit_value_t value, void *context);
+void amps_callback(homekit_characteristic_t *_ch, homekit_value_t value, void *context);
+void watts_callback(homekit_characteristic_t *_ch, homekit_value_t value, void *context);
 
 homekit_characteristic_t wifi_reset   = HOMEKIT_CHARACTERISTIC_(CUSTOM_WIFI_RESET, false, .setter=wifi_reset_set);
 homekit_characteristic_t wifi_check_interval   = HOMEKIT_CHARACTERISTIC_(CUSTOM_WIFI_CHECK_INTERVAL, 10, .setter=wifi_check_interval_set);
@@ -71,33 +74,34 @@ homekit_characteristic_t serial       = HOMEKIT_CHARACTERISTIC_(SERIAL_NUMBER, D
 homekit_characteristic_t model        = HOMEKIT_CHARACTERISTIC_(MODEL,         DEVICE_MODEL);
 homekit_characteristic_t revision     = HOMEKIT_CHARACTERISTIC_(FIRMWARE_REVISION,  FW_VERSION);
 homekit_characteristic_t switch_on = HOMEKIT_CHARACTERISTIC_(
-                                                             ON, 0, .callback=HOMEKIT_CHARACTERISTIC_CALLBACK(switch_on_callback)
+                                                             ON, false, .callback=HOMEKIT_CHARACTERISTIC_CALLBACK(switch_on_callback)
                                                              );
 homekit_characteristic_t volts = HOMEKIT_CHARACTERISTIC_(
-                                                             CUSTOM_VOLTS, 0, .callback=HOMEKIT_CHARACTERISTIC_CALLBACK(volts_callback)
-                                                             );
+                                                         CUSTOM_VOLTS, 0, .callback=HOMEKIT_CHARACTERISTIC_CALLBACK(volts_callback)
+                                                         );
 homekit_characteristic_t amps = HOMEKIT_CHARACTERISTIC_(
-                                                             CUSTOM_AMPS, 0, .callback=HOMEKIT_CHARACTERISTIC_CALLBACK(amps_callback)
-                                                             );
+                                                        CUSTOM_AMPS, 0, .callback=HOMEKIT_CHARACTERISTIC_CALLBACK(amps_callback)
+                                                        );
 homekit_characteristic_t watts = HOMEKIT_CHARACTERISTIC_(
-                                                             CUSTOM_WATTS, 0, .callback=HOMEKIT_CHARACTERISTIC_CALLBACK(watts_callback)
-                                                             );
+                                                         CUSTOM_WATTS, 0, .callback=HOMEKIT_CHARACTERISTIC_CALLBACK(watts_callback)
+                                                         );
 
-// The GPIO pin that is connected to the relay.
-const int relay_gpio = 5;
-// The GPIO pin that is connected to the LED.
-const int LED_GPIO = 1	;
-// The GPIO pin that is oconnected to the button.
+TaskHandle_t power_monitoring_task_handle;
+
+// The GPIO pin that is connected to the relay on the SWA9.
+const int relay_gpio = 14;
+// The GPIO pin that is connected to the LED on the SWA9.
+const int LED_GPIO = 1;
+// The GPIO pin that is oconnected to the button on the SWA9.
 /* const int reset_button_gpio = 0; */
-const int BUTTON_GPIO = 14;
+const int BUTTON_GPIO = 3;
 int led_off_value=1; /* global varibale to support LEDs set to 0 where the LED is connected to GND, 1 where +3.3v */
 
 const int status_led_gpio = 13; /*set the gloabl variable for the led to be sued for showing status */
 
-int CF_GPIO = 4;
-int CF1_GPIO = 5;
-int SELi_GPIO =12;
-
+const int CF_GPIO = 4;
+const int CF1_GPIO = 5;
+const int SELi_GPIO = 12;
 
 
 
@@ -137,19 +141,18 @@ void switch_on_callback(homekit_characteristic_t *_ch, homekit_value_t on, void 
     led_write(switch_on.value.bool_value, LED_GPIO);
 }
 
-
-void volts_callback(homekit_characteristic_t *_ch, homekit_value_t on, void *context) {
+void volts_callback(homekit_characteristic_t *_ch, homekit_value_t value, void *context) {
     printf("Volts on callback\n");
     volts.value.int_value = HLW8012_getVoltage();
 }
 
 
-void amps_callback(homekit_characteristic_t *_ch, homekit_value_t on, void *context) {
+void amps_callback(homekit_characteristic_t *_ch, homekit_value_t value, void *context) {
     printf("Amps on callback\n");
     amps.value.int_value = HLW8012_getCurrent();
 }
 
-void watts_callback(homekit_characteristic_t *_ch, homekit_value_t on, void *context) {
+void watts_callback(homekit_characteristic_t *_ch, homekit_value_t value, void *context) {
     printf("Watts on callback\n");
     watts.value.int_value = HLW8012_getActivePower();
 }
@@ -166,8 +169,11 @@ homekit_accessory_t *accessories[] = {
             NULL
         }),
         HOMEKIT_SERVICE(SWITCH, .primary=true, .characteristics=(homekit_characteristic_t*[]){
-            HOMEKIT_CHARACTERISTIC(NAME, DEVICE_NAME),
+            HOMEKIT_CHARACTERISTIC(NAME, "Smartplug"),
             &switch_on,
+            &volts,
+            &watts,
+            &amps,
             &ota_trigger,
             &wifi_reset,
             &wifi_check_interval,
@@ -181,6 +187,27 @@ homekit_accessory_t *accessories[] = {
     NULL
 };
 
+void power_monitoring_task(void *_args) {
+
+    printf ("%s:\n", __func__);
+
+    while (1)
+    {
+        volts.value.int_value = HLW8012_getVoltage();
+        amps.value.int_value = HLW8012_getCurrent();
+        watts.value.int_value = HLW8012_getActivePower();
+        
+        homekit_characteristic_bounds_check( &volts);
+        homekit_characteristic_bounds_check( &amps);
+        homekit_characteristic_bounds_check( &watts);
+        
+        homekit_characteristic_notify(&volts, volts.value);
+        homekit_characteristic_notify(&amps, amps.value);
+        homekit_characteristic_notify(&watts, watts.value);
+        vTaskDelay(POWER_MONITOR_POLL_PERIOD / portTICK_PERIOD_MS);
+    }
+    
+}
 
 
 void recover_from_reset (int reason) {
@@ -201,10 +228,12 @@ void accessory_init_not_paired (void) {
 
 void accessory_init (void ){
     /* initalise anything you don't want started until wifi and pairing is confirmed */
-    
+    printf ("%s:Call HLW8012_init\n", __func__);
     HLW8012_init(CF_GPIO, CF_GPIO, SELi_GPIO, 0, 1);
+    xTaskCreate(power_monitoring_task, "Power Monitoring Task", 512, NULL, 2, &power_monitoring_task_handle);
     // currentWhen  - 1 for HLW8012 (old Sonoff Pow), 0 for BL0937
     // model - 0 for HLW8012, 1 or other value for BL0937
+    
 }
 
 homekit_server_config_t config = {
