@@ -20,7 +20,7 @@
 #define DEVICE_MODEL "UP111"
 #define DEVICE_SERIAL "12345678"
 #define FW_VERSION "1.0"
-#define SAVE_DELAY 5000
+#define SAVE_DELAY 500
 #define POWER_MONITOR_POLL_PERIOD 10000
 
 
@@ -59,6 +59,9 @@ void switch_on_callback(homekit_characteristic_t *_ch, homekit_value_t on, void 
 void volts_callback(homekit_characteristic_t *_ch, homekit_value_t value, void *context);
 void amps_callback(homekit_characteristic_t *_ch, homekit_value_t value, void *context);
 void watts_callback(homekit_characteristic_t *_ch, homekit_value_t value, void *context);
+void calibrate_pow_set (homekit_value_t value);
+void calibrate_volts_set (homekit_value_t value);
+void calibrate_power_set (homekit_value_t value);
 
 homekit_characteristic_t wifi_reset   = HOMEKIT_CHARACTERISTIC_(CUSTOM_WIFI_RESET, false, .setter=wifi_reset_set);
 homekit_characteristic_t wifi_check_interval   = HOMEKIT_CHARACTERISTIC_(CUSTOM_WIFI_CHECK_INTERVAL, 10, .setter=wifi_check_interval_set);
@@ -66,6 +69,12 @@ homekit_characteristic_t wifi_check_interval   = HOMEKIT_CHARACTERISTIC_(CUSTOM_
 homekit_characteristic_t task_stats   = HOMEKIT_CHARACTERISTIC_(CUSTOM_TASK_STATS, false , .setter=task_stats_set);
 homekit_characteristic_t ota_beta     = HOMEKIT_CHARACTERISTIC_(CUSTOM_OTA_BETA, false, .setter=ota_beta_set);
 homekit_characteristic_t lcm_beta    = HOMEKIT_CHARACTERISTIC_(CUSTOM_LCM_BETA, false, .setter=lcm_beta_set);
+
+
+homekit_characteristic_t calibrate_pow    = HOMEKIT_CHARACTERISTIC_(CUSTOM_CALIBRATE_POW, false, .setter=calibrate_pow_set);
+homekit_characteristic_t calibrate_volts   = HOMEKIT_CHARACTERISTIC_(CUSTOM_CALIBRATE_VOLTS, false, .setter=calibrate_volts_set);
+homekit_characteristic_t calibrate_power    = HOMEKIT_CHARACTERISTIC_(CUSTOM_CALIBRATE_WATTS, false, .setter=calibrate_power_set);
+
 
 homekit_characteristic_t ota_trigger  = API_OTA_TRIGGER;
 homekit_characteristic_t name         = HOMEKIT_CHARACTERISTIC_(NAME, DEVICE_NAME);
@@ -103,7 +112,9 @@ const int CF_GPIO = 4;
 const int CF1_GPIO = 5;
 const int SELi_GPIO = 12;
 
-
+float calibrated_volts_multiplier=0;
+float calibrated_current_multiplier=0;
+float calibrated_power_multiplier=0;
 
 void s2_button_callback(uint8_t gpio, void* args, const uint8_t param) {
     
@@ -152,10 +163,38 @@ void amps_callback(homekit_characteristic_t *_ch, homekit_value_t value, void *c
     amps.value.int_value = HLW8012_getCurrent();
 }
 
+
 void watts_callback(homekit_characteristic_t *_ch, homekit_value_t value, void *context) {
     printf("Watts on callback\n");
     watts.value.int_value = HLW8012_getActivePower();
 }
+
+
+void calibrate_task (){
+    
+    HLW8012_set_calibrated_mutipliers (&calibrated_current_multiplier, &calibrated_volts_multiplier, &calibrated_power_multiplier, calibrate_volts.value.int_value, calibrate_power.value.int_value) ;
+    
+    sdk_os_timer_arm (&save_timer, SAVE_DELAY, 0 );
+    vTaskDelete (NULL);
+}
+
+void calibrate_pow_set (homekit_value_t value) {
+
+    xTaskCreate(calibrate_task, "Calibrate task", 512, NULL, tskIDLE_PRIORITY+1, NULL);
+}
+
+
+void calibrate_volts_set (homekit_value_t value) {
+    
+    calibrate_volts.value.int_value = value.int_value;
+}
+
+
+void calibrate_power_set (homekit_value_t value) {
+    
+    calibrate_power.value.int_value = value.int_value;
+}
+
 
 homekit_accessory_t *accessories[] = {
     HOMEKIT_ACCESSORY(.id=1, .category=homekit_accessory_category_switch, .services=(homekit_service_t*[]){
@@ -180,6 +219,9 @@ homekit_accessory_t *accessories[] = {
             &task_stats,
             &ota_beta,
             &lcm_beta,
+            &calibrate_pow,
+            &calibrate_volts,
+            &calibrate_power,
             NULL
         }),
         NULL
@@ -195,7 +237,15 @@ void power_monitoring_task(void *_args) {
     {
         volts.value.int_value = HLW8012_getVoltage();
         amps.value.int_value = HLW8012_getCurrent();
-        watts.value.int_value = HLW8012_getActivePower();
+        /*watts.value.int_value = HLW8012_getActivePower();*/
+        watts.value.int_value = (int) (volts.value.int_value * amps.value.int_value);
+        
+        printf("%s: [HLW] Active Power (W)    :%d\n", __func__, HLW8012_getActivePower());
+        printf("%s: [HLW] Voltage (V)         :%d\n", __func__, HLW8012_getVoltage());
+        printf("%s: [HLW] Current (A)         :%f\n", __func__, HLW8012_getCurrent());
+        printf("%s: [HLW] Apparent Power (VA) :%d\n", __func__, HLW8012_getApparentPower());
+        printf("%s: [HLW] Power Factor (%%)    :%d\n", __func__, (int) (100 * HLW8012_getPowerFactor()));
+        printf("%s: [HLW] Agg. energy (Ws)    :%d\n", __func__, HLW8012_getEnergy());
         
         homekit_characteristic_bounds_check( &volts);
         homekit_characteristic_bounds_check( &amps);
@@ -220,6 +270,10 @@ void save_characteristics (  ) {
 /* called by a timer function to save charactersitics */
     printf ("%s:\n", __func__);
     save_characteristic_to_flash(&switch_on, switch_on.value);
+    save_float_param ( "wattsx", calibrated_power_multiplier);
+    save_float_param ( "voltsx", calibrated_volts_multiplier);
+    save_float_param ( "currentx", calibrated_current_multiplier);
+
 }
 
 void accessory_init_not_paired (void) {
@@ -230,7 +284,18 @@ void accessory_init (void ){
     /* initalise anything you don't want started until wifi and pairing is confirmed */
     printf ("%s:Call HLW8012_init\n", __func__);
     HLW8012_init(CF_GPIO, CF_GPIO, SELi_GPIO, 1, 0);
-    xTaskCreate(power_monitoring_task, "Power Monitoring Task", 512, NULL, 2, &power_monitoring_task_handle);
+    
+    load_float_param ( "wattsx", &calibrated_power_multiplier);
+    load_float_param ( "voltsx", &calibrated_volts_multiplier);
+    load_float_param ( "currentx", &calibrated_current_multiplier);
+    
+    if ( calibrated_power_multiplier !=0 && calibrated_current_multiplier !=0 && calibrated_volts_multiplier !=0){
+        HLW8012_setCurrentMultiplier(calibrated_current_multiplier);
+        HLW8012_setVoltageMultiplier(calibrated_volts_multiplier);
+        HLW8012_setPowerMultiplier(calibrated_power_multiplier);
+    }
+    
+    xTaskCreate(power_monitoring_task, "Power Monitoring Task", 512, NULL, tskIDLE_PRIORITY+1, &power_monitoring_task_handle);
     // currentWhen  - 1 for HLW8012 (old Sonoff Pow), 0 for BL0937
     // model - 0 for HLW8012, 1 or other value for BL0937
     
