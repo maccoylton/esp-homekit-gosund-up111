@@ -72,8 +72,8 @@ homekit_characteristic_t lcm_beta    = HOMEKIT_CHARACTERISTIC_(CUSTOM_LCM_BETA, 
 
 
 homekit_characteristic_t calibrate_pow    = HOMEKIT_CHARACTERISTIC_(CUSTOM_CALIBRATE_POW, false, .setter=calibrate_pow_set);
-homekit_characteristic_t calibrate_volts   = HOMEKIT_CHARACTERISTIC_(CUSTOM_CALIBRATE_VOLTS, false, .setter=calibrate_volts_set);
-homekit_characteristic_t calibrate_power    = HOMEKIT_CHARACTERISTIC_(CUSTOM_CALIBRATE_WATTS, false, .setter=calibrate_power_set);
+homekit_characteristic_t calibrate_volts   = HOMEKIT_CHARACTERISTIC_(CUSTOM_CALIBRATE_VOLTS, 230, .setter=calibrate_volts_set);
+homekit_characteristic_t calibrate_power    = HOMEKIT_CHARACTERISTIC_(CUSTOM_CALIBRATE_WATTS, 60, .setter=calibrate_power_set);
 
 
 homekit_characteristic_t ota_trigger  = API_OTA_TRIGGER;
@@ -154,19 +154,21 @@ void switch_on_callback(homekit_characteristic_t *_ch, homekit_value_t on, void 
 
 void volts_callback(homekit_characteristic_t *_ch, homekit_value_t value, void *context) {
     printf("Volts on callback\n");
-    volts.value.int_value = HLW8012_getVoltage();
+/*    volts.value.int_value = HLW8012_getVoltage();*/
 }
 
 
 void amps_callback(homekit_characteristic_t *_ch, homekit_value_t value, void *context) {
     printf("Amps on callback\n");
-    amps.value.int_value = HLW8012_getCurrent();
+/*    amps.value.float_value = HLW8012_getCurrent();*/
 }
 
 
 void watts_callback(homekit_characteristic_t *_ch, homekit_value_t value, void *context) {
     printf("Watts on callback\n");
-    watts.value.int_value = HLW8012_getActivePower();
+/*    watts.value.int_value = HLW8012_getActivePower();*/
+/*    watts.value.int_value = (int) (volts.value.int_value * amps.value.float_value);*/
+    
 }
 
 
@@ -175,6 +177,10 @@ void calibrate_task (){
     HLW8012_set_calibrated_mutipliers (&calibrated_current_multiplier, &calibrated_volts_multiplier, &calibrated_power_multiplier, calibrate_volts.value.int_value, calibrate_power.value.int_value) ;
     
     sdk_os_timer_arm (&save_timer, SAVE_DELAY, 0 );
+    
+    calibrate_pow.value.bool_value = false;
+    homekit_characteristic_notify(&calibrate_pow, calibrate_pow.value);
+
     vTaskDelete (NULL);
 }
 
@@ -236,9 +242,9 @@ void power_monitoring_task(void *_args) {
     while (1)
     {
         volts.value.int_value = HLW8012_getVoltage();
-        amps.value.int_value = HLW8012_getCurrent();
+        amps.value.float_value = HLW8012_getCurrent();
         /*watts.value.int_value = HLW8012_getActivePower();*/
-        watts.value.int_value = (int) (volts.value.int_value * amps.value.int_value);
+        watts.value.int_value = (int) (volts.value.int_value * amps.value.float_value);
         
         printf("%s: [HLW] Active Power (W)    :%d\n", __func__, HLW8012_getActivePower());
         printf("%s: [HLW] Voltage (V)         :%d\n", __func__, HLW8012_getVoltage());
@@ -290,9 +296,12 @@ void accessory_init (void ){
     load_float_param ( "currentx", &calibrated_current_multiplier);
     
     if ( calibrated_power_multiplier !=0 && calibrated_current_multiplier !=0 && calibrated_volts_multiplier !=0){
+        printf ("%s:Setting calibrated multipliers, current: %f, voltage: %f, watts: %f\n", __func__, calibrated_current_multiplier, calibrated_volts_multiplier, calibrated_power_multiplier);
         HLW8012_setCurrentMultiplier(calibrated_current_multiplier);
         HLW8012_setVoltageMultiplier(calibrated_volts_multiplier);
         HLW8012_setPowerMultiplier(calibrated_power_multiplier);
+    } else {
+        printf ("%s:calibrated mutipliers not available, current: %f, voltage: %f, watts: %f\n", __func__, calibrated_current_multiplier, calibrated_volts_multiplier, calibrated_power_multiplier);
     }
     
     xTaskCreate(power_monitoring_task, "Power Monitoring Task", 512, NULL, tskIDLE_PRIORITY+1, &power_monitoring_task_handle);
