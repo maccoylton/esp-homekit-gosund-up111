@@ -270,7 +270,9 @@ void recover_from_reset (int reason) {
 /* called if we restarted abnormally */
     printf ("%s: reason %d\n", __func__, reason);
     load_characteristic_from_flash(&switch_on);
+    homekit_characteristic_notify(&switch_on, switch_on.value);
 }
+
 
 void save_characteristics (  ) {
 /* called by a timer function to save charactersitics */
@@ -282,14 +284,18 @@ void save_characteristics (  ) {
 
 }
 
+
 void accessory_init_not_paired (void) {
     /* initalise anything you don't want started until wifi and homekit imitialisation is confirmed, but not paired */
 }
+
 
 void accessory_init (void ){
     /* initalise anything you don't want started until wifi and pairing is confirmed */
     printf ("%s:Call HLW8012_init\n", __func__);
     HLW8012_init(CF_GPIO, CF_GPIO, SELi_GPIO, 1, 0);
+    // currentWhen  - 1 for HLW8012 (old Sonoff Pow), 0 for BL0937
+    // model - 0 for HLW8012, 1 or other value for BL0937
     
     load_float_param ( "wattsx", &calibrated_power_multiplier);
     load_float_param ( "voltsx", &calibrated_volts_multiplier);
@@ -305,10 +311,11 @@ void accessory_init (void ){
     }
     
     xTaskCreate(power_monitoring_task, "Power Monitoring Task", 512, NULL, tskIDLE_PRIORITY+1, &power_monitoring_task_handle);
-    // currentWhen  - 1 for HLW8012 (old Sonoff Pow), 0 for BL0937
-    // model - 0 for HLW8012, 1 or other value for BL0937
+
+    homekit_characteristic_notify(&switch_on, switch_on.value);
     
 }
+
 
 homekit_server_config_t config = {
     .accessories = accessories,
