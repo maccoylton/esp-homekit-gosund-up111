@@ -4,24 +4,19 @@ EXTRA_COMPONENTS = \
 	extras/dht \
 	extras/http-parser \
 	extras/rboot-ota \
-    extras/dhcpserver \
-	extras/ssd1306 \
-	extras/fonts \
-	extras/i2c \
+        extras/dhcpserver \
+        extras/sntp \
 	$(abspath ../components/esp-wolfssl) \
 	$(abspath ../components/esp-cjson) \
 	$(abspath ../components/esp-homekit)\
-    $(abspath ../components/esp-wifi-config)\
-    $(abspath ../components/UDPlogger)\
+        $(abspath ../components/esp-wifi-config)\
+        $(abspath ../components/UDPlogger)\
 	$(abspath ../components/esp-adv-button)\
 	$(abspath ../components/esp-homekit-common-functions/led_codes)\
 	$(abspath ../components/esp-homekit-common-functions/ota)\
-    $(abspath ../components/esp-homekit-common-functions/custom_characteristics)\
-    $(abspath ../components/esp-homekit-common-functions/shared_functions)\
-    $(abspath ../components/esp-homekit-common-functions/rgbw_lights)\
-    $(abspath ../components/esp-homekit-common-functions/colour_conversion)\
-    extras/multipwm \
-    $(abspath ../components/HLW8012_BL0937_ESP)
+        $(abspath ../components/esp-homekit-common-functions/custom_characteristics)\
+        $(abspath ../components/esp-homekit-common-functions/shared_functions)\
+        $(abspath ../components/HLW8012_BL0937_ESP)
 
 
 FLASH_SIZE ?= 8
@@ -39,7 +34,7 @@ EXTRA_CFLAGS += -DHOMEKIT_OVERCLOCK_PAIR_SETUP
 EXTRA_CFLAGS += -DUDPLOG_PRINTF_TO_UDP
 EXTRA_CFLAGS += -DUDPLOG_PRINTF_ALSO_SERIAL
 EXTRA_CFLAGS += -DconfigUSE_TRACE_FACILITY
-
+EXTRA_CFLAGS += -DEXTRAS_SNTP
 
 LIBS ?= m
 
