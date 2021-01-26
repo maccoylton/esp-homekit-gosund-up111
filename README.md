@@ -1,3 +1,6 @@
+![GitHub All Releases](https://img.shields.io/github/downloads/maccoylton/esp-homekit-gosund-up111/total) 
+![GitHub Releases](https://img.shields.io/github/downloads/maccoylton/esp-homekit-gosund-up111/latest/total)
+
 # esp-homekit-gosund-up111
 
 HomeKit Firmware for gosund UP111 power monitoring samrt plug. 
