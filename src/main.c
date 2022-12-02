@@ -140,8 +140,8 @@ void gpio_init() {
     adv_button_register_callback_fn(BUTTON_GPIO, reset_button_callback, VERYLONGPRESS_TYPE, NULL, 0);
     
     
-    gpio_enable(LED_GPIO, GPIO_OUTPUT);
-    led_write(false, RELAY_LED_GPIO);
+    gpio_enable(RELAY_LED_GPIO, GPIO_OUTPUT);
+    led_write(switch_on.value.bool_value, RELAY_LED_GPIO);
     gpio_enable(relay_gpio, GPIO_OUTPUT);
     relay_write(switch_on.value.bool_value, relay_gpio);
     
