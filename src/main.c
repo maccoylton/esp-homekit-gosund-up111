@@ -12,7 +12,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Homekit firmware SWA9 SmartSocket
+ * Homekit firmware GOSUB UP111 Smart Power Monitoring Socket
  */
 
 #define DEVICE_MANUFACTURER "Gosund"
@@ -97,16 +97,17 @@ homekit_characteristic_t watts = HOMEKIT_CHARACTERISTIC_(
 
 TaskHandle_t power_monitoring_task_handle;
 
-// The GPIO pin that is connected to the relay on the SWA9.
+// The GPIO pin that is connected to the relay.
 const int relay_gpio = 14;
-// The GPIO pin that is connected to the LED on the SWA9.
+const int RELAY_LED_GPIO = 13;
+
+// The GPIO pin that is connected to the LED.
 const int LED_GPIO = 1;
-// The GPIO pin that is oconnected to the button on the SWA9.
-/* const int reset_button_gpio = 0; */
+// The GPIO pin that is oconnected to the button
 const int BUTTON_GPIO = 3;
 int led_off_value=1; /* global varibale to support LEDs set to 0 where the LED is connected to GND, 1 where +3.3v */
 
-const int status_led_gpio = 13; /*set the gloabl variable for the led to be sued for showing status */
+const int status_led_gpio = 1; /*set the gloabl variable for the led to be used for showing status */
 
 const int CF_GPIO = 4;
 const int CF1_GPIO = 5;
@@ -122,7 +123,7 @@ void s2_button_callback(uint8_t gpio, void* args, const uint8_t param) {
     printf("Toggling relay\n");
     switch_on.value.bool_value = !switch_on.value.bool_value;
     relay_write(switch_on.value.bool_value, relay_gpio);
-    led_write(switch_on.value.bool_value, LED_GPIO);
+    led_write(switch_on.value.bool_value, RELAY_LED_GPIO);
     homekit_characteristic_notify(&switch_on, switch_on.value);
     sdk_os_timer_arm (&save_timer, SAVE_DELAY, 0 );
 }
@@ -140,7 +141,7 @@ void gpio_init() {
     
     
     gpio_enable(LED_GPIO, GPIO_OUTPUT);
-    led_write(false, LED_GPIO);
+    led_write(false, RELAY_LED_GPIO);
     gpio_enable(relay_gpio, GPIO_OUTPUT);
     relay_write(switch_on.value.bool_value, relay_gpio);
     
@@ -149,7 +150,7 @@ void gpio_init() {
 void switch_on_callback(homekit_characteristic_t *_ch, homekit_value_t on, void *context) {
     printf("Switch on callback\n");
     relay_write(switch_on.value.bool_value, relay_gpio);
-    led_write(switch_on.value.bool_value, LED_GPIO);
+    led_write(switch_on.value.bool_value, RELAY_LED_GPIO);
 }
 
 void volts_callback(homekit_characteristic_t *_ch, homekit_value_t value, void *context) {
