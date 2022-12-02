@@ -293,7 +293,7 @@ void accessory_init_not_paired (void) {
 void accessory_init (void ){
     /* initalise anything you don't want started until wifi and pairing is confirmed */
     printf ("%s:Call HLW8012_init\n", __func__);
-    HLW8012_init(CF_GPIO, CF_GPIO, SELi_GPIO, 1, 0);
+    HLW8012_init(CF_GPIO, CF1_GPIO, SELi_GPIO, 1, 0);
     // currentWhen  - 1 for HLW8012 (old Sonoff Pow), 0 for BL0937
     // model - 0 for HLW8012, 1 or other value for BL0937
     
